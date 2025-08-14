@@ -19,13 +19,73 @@
 
 ## 🚀 Installation
 
-```bash
-# Install from PyPI
-pip install groupie
+### From PyPI (Coming Soon)
 
-# Or install directly from this repository
+```bash
+# Install from PyPI (once published)
+pip install groupie
+```
+
+### From GitHub Repository
+
+```bash
+# Install directly from GitHub
+pip install git+https://github.com/nicotegui/groupie.git
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/nicotegui/groupie.git
+cd groupie
+
+# Install
 pip install .
 ```
+
+### Important: Adding to PATH (Windows)
+
+After installation, you might see this warning:
+```
+WARNING: The script gr.exe is installed in 'C:\Users\username\AppData\Roaming\Python\Python312\Scripts' which is not on PATH.
+```
+
+To resolve this and use `gr` from anywhere, you have three options:
+
+#### Option 1: Add to PATH for current session only
+
+```powershell
+# PowerShell (replace 'username' and Python version as needed)
+$env:Path += ";C:\Users\username\AppData\Roaming\Python\Python312\Scripts"
+```
+
+```cmd
+:: Command Prompt (replace 'username' and Python version as needed)
+set PATH=%PATH%;C:\Users\username\AppData\Roaming\Python\Python312\Scripts
+```
+
+#### Option 2: Add to PATH permanently
+
+1. Press `Win + X` and select "System"
+2. Click "Advanced system settings"
+3. Click "Environment Variables"
+4. Under "User variables", select "Path" and click "Edit"
+5. Click "New" and add the path from the warning message
+6. Click "OK" on all dialog boxes
+7. Restart your terminal
+
+#### Option 3: Use the full path
+
+If you don't want to modify your PATH, you can use the full path to the executable:
+
+```powershell
+C:\Users\username\AppData\Roaming\Python\Python312\Scripts\gr.exe create my-group
+```
+
+### Linux and macOS
+
+On Unix-like systems, pip typically installs scripts in a location that's already in your PATH, so the `gr` command should work immediately.
 
 ## 🖥 Command Reference
 
