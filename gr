@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+"""
+Command-line runner for Groupie
+"""
+from groupie.cli import main
+
+if __name__ == '__main__':
+    main()
