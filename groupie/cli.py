@@ -38,22 +38,28 @@ def get_file_color(file_path: str) -> Dict[str, str]:
     Returns:
         Dictionary with fg (foreground) and style keys
     """
-    if not os.path.exists(file_path):
-        return {'fg': 'red', 'bold': True}  # Missing files
-    
-    # Get file stats
-    file_stat = os.stat(file_path)
-    mode = file_stat.st_mode
-    
-    # Check if it's a directory (handled separately)
-    if stat.S_ISDIR(mode):
-        return {'fg': 'bright_blue', 'bold': True}
-    
-    # Check if it's executable - use cross-platform method
-    is_executable = is_file_executable(file_path)
-    
-    # Check file extension
-    _, ext = os.path.splitext(file_path.lower())
+    # Safely check if file exists
+    try:
+        if not os.path.exists(file_path):
+            return {'fg': 'red', 'bold': True}  # Missing files
+        
+        # Get file stats
+        file_stat = os.stat(file_path)
+        mode = file_stat.st_mode
+        
+        # Check if it's a directory (handled separately)
+        if stat.S_ISDIR(mode):
+            return {'fg': 'bright_blue', 'bold': True}
+        
+        # Check if it's executable - use cross-platform method
+        is_executable = is_file_executable(file_path)
+        
+        # Check file extension
+        _, ext = os.path.splitext(file_path.lower())
+    except (FileNotFoundError, PermissionError):
+        # If we can't access the file, use the extension to guess coloring
+        _, ext = os.path.splitext(file_path.lower())
+        is_executable = False
     
     # Color scheme similar to common ls implementations
     if is_executable:
@@ -86,12 +92,31 @@ def format_file_name(file_path: str, basename_only: bool = True, is_missing: boo
     Returns:
         Styled file name
     """
-    name = os.path.basename(file_path) if basename_only else file_path
+    # Check if the input is already a basename
+    if os.path.basename(file_path) == file_path:
+        name = file_path
+        # For basenames, we need to get the full path if it's in the current directory
+        # to correctly determine file type
+        if os.path.exists(os.path.join(os.getcwd(), file_path)):
+            color_file_path = os.path.join(os.getcwd(), file_path)
+        else:
+            # For files not in current directory, use default styling
+            color_file_path = file_path
+    else:
+        # Handle full paths
+        name = os.path.basename(file_path) if basename_only else file_path
+        color_file_path = file_path
     
     if is_missing:
         return click.style(f"{name}*", fg='red', bold=True)
     
-    color_opts = get_file_color(file_path)
+    # Use the appropriate path for determining color
+    if os.path.exists(color_file_path):
+        color_opts = get_file_color(color_file_path)
+    else:
+        # Default coloring for files we can't check
+        color_opts = {'fg': 'white'}
+        
     return click.style(name, **color_opts)
 
 
@@ -142,7 +167,8 @@ def add(name: str, files: List[str]):
 @main.command(name="ls")
 @click.option('--clean', '-c', is_flag=True, help='Automatically remove missing files during listing')
 @click.option('--no-files', '-n', is_flag=True, help='Don\'t display files in the current directory')
-def list_command(clean: bool, no_files: bool):
+@click.option('--all', '-a', is_flag=True, help='Show hidden files (starting with .)')
+def list_command(clean: bool, no_files: bool, all: bool):
     """List all groups and files, flagging missing files"""
     # Get manager and group data first to identify files in groups
     manager = FileGroupManager()
@@ -166,7 +192,13 @@ def list_command(clean: bool, no_files: bool):
         try:
             # Get all items in the directory
             all_items = []
+            terminal_width = os.get_terminal_size().columns if hasattr(os, 'get_terminal_size') else 80
+            
             for item in os.listdir(current_dir):
+                # Skip hidden files (starting with .) unless --all flag is used
+                if item.startswith('.') and not all:
+                    continue
+                    
                 full_path = os.path.join(current_dir, item)
                 abs_path = str(Path(full_path).resolve())
                 
@@ -178,23 +210,57 @@ def list_command(clean: bool, no_files: bool):
                     # Format directories with appropriate color
                     all_items.append(format_file_name(full_path))
             
-            # Sort and display items in columns (similar to 'ls')
+            # Sort and display items in a grid format like standard ls
             if all_items:
-                # Format in a clean, organized grid like standard ls
                 sorted_items = sorted(all_items)
-                click.echo(' '.join(sorted_items))
+                
+                # Format in a grid with proper column spacing
+                if sorted_items:
+                    # Calculate how many items to display per line for grid layout
+                    max_item_length = max(len(click.unstyle(item)) for item in sorted_items) + 2  # +2 for spacing
+                    cols = max(1, terminal_width // max_item_length)
+                    
+                    # Create grid layout
+                    for i in range(0, len(sorted_items), cols):
+                        row_items = sorted_items[i:i+cols]
+                        formatted_row = []
+                        for item in row_items:
+                            # Pad each item to align columns
+                            formatted_row.append(f"{item}{' ' * (max_item_length - len(click.unstyle(item)))}")
+                        click.echo(''.join(formatted_row))
+                else:
+                    # No output if no files (to match Linux ls behavior)
+                    pass
             else:
                 # No output if no files (to match Linux ls behavior)
                 pass
         except Exception as e:
             click.echo(f"Error listing directory: {str(e)}")
     
-    # List the groups now
+    # List the groups now - only groups with files in the current directory
+    current_dir = os.getcwd()
+    current_dir_abs = str(Path(current_dir).resolve())
     
-    if not groups_with_status:
-        if not no_files:  # Only add a newline if we displayed files above
-            click.echo("")
-        click.echo("No groups found. Create one with 'gr create NAME'")
+    # Filter groups to only show those with files in the current directory
+    current_dir_groups = {}
+    for group_name, files_with_status in groups_with_status.items():
+        # Check if any file in this group is in the current directory
+        has_files_in_current_dir = False
+        filtered_files = []
+        
+        for file_path, is_missing in files_with_status:
+            file_dir = os.path.dirname(file_path)
+            if not is_missing and (file_dir == current_dir or os.path.dirname(str(Path(file_path).resolve())) == current_dir_abs):
+                has_files_in_current_dir = True
+                filtered_files.append((file_path, is_missing))
+            elif is_missing:
+                # Always include missing files so they can be cleaned
+                filtered_files.append((file_path, is_missing))
+                
+        if has_files_in_current_dir:
+            current_dir_groups[group_name] = filtered_files
+    
+    if not current_dir_groups:
         return
     
     # Add spacing between files and groups
@@ -206,7 +272,7 @@ def list_command(clean: bool, no_files: bool):
     removed_count = 0
     has_missing_files = False
     
-    for group_name, files_with_status in groups_with_status.items():
+    for group_name, files_with_status in current_dir_groups.items():
         click.echo(f"  {group_name}:")
         
         if not files_with_status:
@@ -217,15 +283,18 @@ def list_command(clean: bool, no_files: bool):
         file_display = []
         
         for file_path, is_missing in files_with_status:
+            # Extract just the basename for display
+            basename = os.path.basename(file_path)
+            
             if is_missing:
                 if clean:
                     removed_count += 1
                 # Use formatting for missing files
-                file_display.append(format_file_name(file_path, is_missing=True))
+                file_display.append(format_file_name(basename, is_missing=True))
                 has_missing_files = True
             else:
                 # Use color-coded formatting based on file type
-                file_display.append(format_file_name(file_path))
+                file_display.append(format_file_name(basename))
         
         # Display files in indented format
         if file_display:
