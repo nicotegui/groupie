@@ -180,20 +180,28 @@ def list_command(clean: bool, no_files: bool):
             
             # Sort and display items in columns (similar to 'ls')
             if all_items:
-                # Format in columns like standard ls
-                click.echo(f"  {' '.join(sorted(all_items))}")
+                # Format in a clean, organized grid like standard ls
+                sorted_items = sorted(all_items)
+                click.echo(' '.join(sorted_items))
             else:
-                click.echo("  (no files)")
+                # No output if no files (to match Linux ls behavior)
+                pass
         except Exception as e:
-            click.echo(f"  Error listing directory: {str(e)}")
+            click.echo(f"Error listing directory: {str(e)}")
     
     # List the groups now
     
     if not groups_with_status:
-        click.echo("\nNo groups found. Create one with 'gr create NAME'")
+        if not no_files:  # Only add a newline if we displayed files above
+            click.echo("")
+        click.echo("No groups found. Create one with 'gr create NAME'")
         return
     
-    click.echo("\nGroups:")
+    # Add spacing between files and groups
+    if not no_files and all_items:
+        click.echo("")
+    
+    click.echo("Groups:")
     
     removed_count = 0
     has_missing_files = False
@@ -219,9 +227,11 @@ def list_command(clean: bool, no_files: bool):
                 # Use color-coded formatting based on file type
                 file_display.append(format_file_name(file_path))
         
-        # Display all files on a single line
+        # Display files in indented format
         if file_display:
-            click.echo(f"    {' '.join(sorted(file_display))}")
+            # Indent with two spaces (group name already has 2-space indent)
+            sorted_files = sorted(file_display)
+            click.echo(f"    {' '.join(sorted_files)}")
         else:
             click.echo("    (empty)")
     
